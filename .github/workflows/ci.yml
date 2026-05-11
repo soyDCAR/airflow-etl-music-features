@@ -29,7 +29,8 @@ jobs:
           pip install apache-airflow==2.9.0 \
             --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.0/constraints-3.11.txt"
           pip install librosa soundfile psycopg2-binary pandas requests \
-                      pytest ruff black
+                      pytest ruff black \
+                      dbt-core==1.7.9 dbt-postgres==1.7.9
 
       - name: Ruff lint
         run: ruff check .
@@ -48,3 +49,12 @@ jobs:
           AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////tmp/airflow_ci.db
           AIRFLOW__CORE__LOAD_EXAMPLES: "False"
         run: pytest tests/ -v
+
+      - name: dbt parse (validate models compile)
+        working-directory: dbt
+        env:
+          WAREHOUSE_DB_HOST: localhost
+          WAREHOUSE_DB_NAME: music_features
+          WAREHOUSE_DB_USER: warehouse
+          WAREHOUSE_DB_PASSWORD: warehouse
+        run: dbt parse --profiles-dir . --project-dir .

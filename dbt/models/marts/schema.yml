@@ -1,0 +1,16 @@
+version: 2
+models:
+  - name: dim_tracks
+    columns:
+      - name: track_id
+        tests: [unique, not_null]
+  - name: fct_audio_features
+    columns:
+      - name: track_id
+        tests: [unique, not_null]
+      - name: tempo
+        tests: [not_null]
+  - name: mart_tempo_stats
+    columns:
+      - name: tempo_bucket
+        tests: [unique, not_null]

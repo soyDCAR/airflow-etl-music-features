@@ -1,11 +1,9 @@
-"""
-DAG integrity tests — validate structure without executing tasks or starting services.
-"""
+"""DAG integrity tests — validan estructura sin ejecutar tareas ni servicios."""
 import pytest
 from airflow.models import DagBag
 
 DAG_ID = "extract_fma_features"
-EXPECTED_TASKS = {"download_fma_sample", "extract_features", "load_to_postgres"}
+EXPECTED_TASKS = {"download_fma_sample", "extract_features", "load_to_postgres", "run_dbt_transforms"}
 
 
 @pytest.fixture(scope="module")
@@ -16,7 +14,7 @@ def dagbag() -> DagBag:
 @pytest.fixture(scope="module")
 def fma_dag(dagbag: DagBag):
     dag = dagbag.get_dag(DAG_ID)
-    assert dag is not None, f"DAG '{DAG_ID}' not found — check dags/ folder"
+    assert dag is not None, f"DAG '{DAG_ID}' no encontrado"
     return dag
 
 
@@ -24,8 +22,8 @@ def test_dagbag_has_no_import_errors(dagbag: DagBag) -> None:
     assert dagbag.import_errors == {}, f"Import errors: {dagbag.import_errors}"
 
 
-def test_dag_has_exactly_three_tasks(fma_dag) -> None:
-    assert len(fma_dag.tasks) == 3
+def test_dag_has_exactly_four_tasks(fma_dag) -> None:
+    assert len(fma_dag.tasks) == 4
 
 
 def test_task_ids_match_expected(fma_dag) -> None:
@@ -34,14 +32,13 @@ def test_task_ids_match_expected(fma_dag) -> None:
 
 def test_task_dependency_order(fma_dag) -> None:
     download = fma_dag.get_task("download_fma_sample")
-    extract = fma_dag.get_task("extract_features")
-    load = fma_dag.get_task("load_to_postgres")
-
-    downstream_of_download = {t.task_id for t in download.downstream_list}
-    downstream_of_extract = {t.task_id for t in extract.downstream_list}
-
-    assert "extract_features" in downstream_of_download
-    assert "load_to_postgres" in downstream_of_extract
+    extract  = fma_dag.get_task("extract_features")
+    load     = fma_dag.get_task("load_to_postgres")
+    dbt      = fma_dag.get_task("run_dbt_transforms")
+    assert "extract_features"   in {t.task_id for t in download.downstream_list}
+    assert "load_to_postgres"   in {t.task_id for t in extract.downstream_list}
+    assert "run_dbt_transforms" in {t.task_id for t in load.downstream_list}
+    assert dbt.downstream_list == []
 
 
 def test_dag_has_no_cycles(fma_dag) -> None:

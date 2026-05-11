@@ -42,6 +42,11 @@ data/*
 .DS_Store
 Thumbs.db
 
+# dbt artifacts (generated at runtime, never commit)
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+
 # Test / coverage
 .pytest_cache/
 .coverage

@@ -1,0 +1,21 @@
+version: 2
+sources:
+  - name: raw
+    database: "{{ env_var('WAREHOUSE_DB_NAME', 'music_features') }}"
+    schema: public
+    tables:
+      - name: audio_features
+        columns:
+          - name: track_id
+            tests: [unique, not_null]
+          - name: tempo
+            tests: [not_null]
+models:
+  - name: stg_audio_features
+    columns:
+      - name: track_id
+        tests: [unique, not_null]
+      - name: tempo_bucket
+        tests:
+          - accepted_values:
+              values: ["very_slow", "slow", "moderate", "fast", "very_fast"]

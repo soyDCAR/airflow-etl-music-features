@@ -10,14 +10,22 @@ x-airflow-common: &airflow-common
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
     AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
-    # Pass warehouse creds as env vars so tasks can read them
+    # Airflow Connection — used by PostgresHook('postgres_warehouse')
+    AIRFLOW_CONN_POSTGRES_WAREHOUSE: "postgresql://${WAREHOUSE_DB_USER}:${WAREHOUSE_DB_PASSWORD}@postgres-warehouse/${WAREHOUSE_DB_NAME}"
+    # Pass warehouse creds as env vars for dbt profiles.yml
+    WAREHOUSE_DB_HOST: postgres-warehouse
     WAREHOUSE_DB_USER: ${WAREHOUSE_DB_USER}
     WAREHOUSE_DB_PASSWORD: ${WAREHOUSE_DB_PASSWORD}
     WAREHOUSE_DB_NAME: ${WAREHOUSE_DB_NAME}
+    # Feature flags
+    FMA_USE_SYNTHETIC: ${FMA_USE_SYNTHETIC:-true}
+    FMA_SAMPLE_SIZE: ${FMA_SAMPLE_SIZE:-10}
+    FMA_DATA_DIR: ${FMA_DATA_DIR:-/tmp/fma}
   volumes:
     - ./dags:/opt/airflow/dags
     - ./plugins:/opt/airflow/plugins
     - ./data:/opt/airflow/data
+    - ./dbt:/opt/airflow/dbt
     - airflow-logs:/opt/airflow/logs
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
@@ -120,6 +128,30 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+
+  # ── Streamlit dashboard ──────────────────────────────────────────────────────
+  streamlit-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: streamlit-dashboard
+    environment:
+      WAREHOUSE_DB_HOST: postgres-warehouse
+      WAREHOUSE_DB_NAME: ${WAREHOUSE_DB_NAME}
+      WAREHOUSE_DB_USER: ${WAREHOUSE_DB_USER}
+      WAREHOUSE_DB_PASSWORD: ${WAREHOUSE_DB_PASSWORD}
+    ports:
+      - "8501:8501"
+    depends_on:
+      postgres-warehouse:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
 # ── Volumes ────────────────────────────────────────────────────────────────────
 volumes:

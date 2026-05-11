@@ -1,0 +1,8 @@
+# Dashboard dependencies — installed inside Dockerfile.dashboard
+# Keep separate from the Airflow requirements.txt to avoid constraint conflicts.
+
+streamlit==1.35.0
+plotly==5.22.0
+pandas==2.2.1
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.30

@@ -1,0 +1,17 @@
+name: "fma_pipeline"
+version: "1.0.0"
+config-version: 2
+profile: "fma_pipeline"
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+models:
+  fma_pipeline:
+    staging:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts
