@@ -115,22 +115,46 @@ def spectral_centroid_by_bucket(df: pd.DataFrame) -> go.Figure:
 # ── MFCC tab ──────────────────────────────────────────────────────────────────
 
 def mfcc_bar(df: pd.DataFrame, track_id: str) -> go.Figure:
-    """Bar chart — MFCC mean per coefficient for a single track."""
+    """Bar chart — MFCC per coefficient for a single track.
+
+    mfcc_mean / mfcc_std can arrive as:
+      - a Python list  (pandas reads a Postgres ARRAY column this way)
+      - a scalar float (if the DAG stores the global mean)
+    Both cases are handled gracefully.
+    """
     row = df[df["track_id"] == track_id]
     if row.empty:
         return go.Figure()
-    mfcc_mean = row["mfcc_mean"].iloc[0]
-    # mfcc_mean is stored as a float (scalar mean across all coefficients & frames)
-    # We show it as a single reference bar; if it's a list it would be richer.
-    fig = go.Figure(
-        go.Bar(x=["MFCC mean"], y=[float(mfcc_mean)], marker_color="#6366f1")
-    )
-    mfcc_std = row["mfcc_std"].iloc[0]
-    fig.add_trace(
-        go.Bar(x=["MFCC std"], y=[float(mfcc_std)], marker_color="#a5b4fc")
-    )
+
+    def _to_list(val) -> list[float]:
+        if isinstance(val, (list, tuple)):
+            return [float(v) for v in val]
+        try:
+            return [float(val)]
+        except (TypeError, ValueError):
+            return [0.0]
+
+    means = _to_list(row["mfcc_mean"].iloc[0])
+    stds  = _to_list(row["mfcc_std"].iloc[0])
+
+    # Pad stds to same length as means if needed (scalar std for list means)
+    if len(stds) == 1 and len(means) > 1:
+        stds = stds * len(means)
+
+    x_labels = [f"MFCC {i+1}" for i in range(len(means))]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        name="Mean",
+        x=x_labels,
+        y=means,
+        marker_color="#6366f1",
+        error_y=dict(type="data", array=stds, visible=True),
+    ))
     fig.update_layout(
-        title=f"MFCC — track {track_id}",
+        title=f"MFCC coefficients — track {track_id}",
+        xaxis_title="Coeficiente",
+        yaxis_title="Valor",
         showlegend=False,
         margin=dict(l=10, r=10, t=40, b=10),
     )
@@ -138,14 +162,42 @@ def mfcc_bar(df: pd.DataFrame, track_id: str) -> go.Figure:
 
 
 def mfcc_heatmap(df: pd.DataFrame) -> go.Figure:
-    """Heatmap — MFCC mean & std for all tracks."""
-    sub = df[["track_id", "mfcc_mean", "mfcc_std"]].copy()
-    sub = sub.set_index("track_id")
-    fig = px.imshow(
-        sub.T,
-        color_continuous_scale="RdBu_r",
-        title="MFCC mean / std por track",
-        labels={"x": "Track ID", "y": "Métrica"},
-    )
+    """Heatmap — MFCC per-coefficient means for all tracks.
+
+    If mfcc_mean is a list (ARRAY column), each coefficient becomes a row.
+    If it's a scalar, falls back to a simple mean/std comparison per track.
+    """
+    sample = df["mfcc_mean"].iloc[0] if not df.empty else None
+    is_list = isinstance(sample, (list, tuple))
+
+    if is_list:
+        # Build matrix: tracks × coefficients
+        n_coeff = len(sample)
+        matrix = pd.DataFrame(
+            [row if isinstance(row, (list, tuple)) else [row] * n_coeff
+             for row in df["mfcc_mean"]],
+            index=df["track_id"].values,
+            columns=[f"MFCC {i+1}" for i in range(n_coeff)],
+        )
+        fig = px.imshow(
+            matrix.T,
+            color_continuous_scale="RdBu_r",
+            title="MFCC mean por coeficiente × track",
+            labels={"x": "Track ID", "y": "Coeficiente"},
+            aspect="auto",
+        )
+    else:
+        # Scalar case — simple bar comparison
+        sub = df[["track_id", "mfcc_mean", "mfcc_std"]].copy()
+        sub["mfcc_mean"] = sub["mfcc_mean"].apply(lambda v: float(v) if v is not None else 0.0)
+        sub["mfcc_std"]  = sub["mfcc_std"].apply(lambda v: float(v) if v is not None else 0.0)
+        sub = sub.set_index("track_id")
+        fig = px.imshow(
+            sub.T,
+            color_continuous_scale="RdBu_r",
+            title="MFCC mean / std por track",
+            labels={"x": "Track ID", "y": "Métrica"},
+        )
+
     fig.update_layout(margin=dict(l=10, r=10, t=40, b=10))
     return fig

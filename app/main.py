@@ -69,14 +69,11 @@ with tab_overview:
         st.info("Sin datos todavía. Ejecuta el DAG en Airflow primero.")
 
     st.subheader("Últimos errores del pipeline")
-    try:
-        errors_df = load_pipeline_errors(limit=10)
-        if errors_df.empty:
-            st.success("✅ Sin errores registrados.")
-        else:
-            st.dataframe(errors_df, use_container_width=True)
-    except Exception as exc:
-        st.warning(f"No se pudo cargar la tabla de errores: {exc}")
+    errors_df = load_pipeline_errors(limit=10)
+    if errors_df.empty:
+        st.success("✅ Sin errores registrados.")
+    else:
+        st.dataframe(errors_df, use_container_width=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

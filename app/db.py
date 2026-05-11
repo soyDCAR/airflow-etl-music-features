@@ -71,9 +71,14 @@ def load_audio_features() -> pd.DataFrame:
         return pd.read_sql(text(sql), conn)
 
 
-@st.cache_data(ttl=300, show_spinner="Cargando errores del pipeline…")
 def load_pipeline_errors(limit: int = 100) -> pd.DataFrame:
-    """pipeline_errors table — last N errors logged by the DAG."""
+    """pipeline_errors table — last N errors logged by the DAG.
+
+    Returns an empty DataFrame (not cached) if the table doesn't exist yet,
+    so the dashboard works before the first DAG run creates it.
+    Note: intentionally NOT decorated with @st.cache_data so that exceptions
+    are never cached — the caller handles the missing-table case gracefully.
+    """
     sql = text(
         """
         SELECT  track_id, error_type, error_message, occurred_at
@@ -82,8 +87,12 @@ def load_pipeline_errors(limit: int = 100) -> pd.DataFrame:
         LIMIT   :lim
         """
     )
-    with get_engine().connect() as conn:
-        return pd.read_sql(sql, conn, params={"lim": limit})
+    try:
+        with get_engine().connect() as conn:
+            return pd.read_sql(sql, conn, params={"lim": limit})
+    except Exception:
+        # Table doesn't exist yet (first run) or connection issue — return empty
+        return pd.DataFrame(columns=["track_id", "error_type", "error_message", "occurred_at"])
 
 
 @st.cache_data(ttl=300, show_spinner="Cargando KPIs…")
