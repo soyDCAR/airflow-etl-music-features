@@ -1,0 +1,26 @@
+# Install Airflow with constraints to avoid dependency conflicts:
+# pip install apache-airflow==2.9.0 \
+#   --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.0/constraints-3.11.txt"
+# Then: pip install -r requirements.txt
+
+apache-airflow==2.9.0
+apache-airflow-providers-postgres==5.10.0
+
+# Audio processing
+librosa==0.10.1
+soundfile==0.12.1
+
+# Data
+numpy==1.26.4
+pandas==2.2.1
+
+# Database
+psycopg2-binary==2.9.9
+
+# HTTP
+requests==2.31.0
+
+# Dev / CI
+pytest==8.1.1
+ruff==0.4.2
+black==24.4.2

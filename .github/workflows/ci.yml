@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    name: Lint & Test (Python 3.11)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install system dependencies (librosa needs libsndfile)
+        run: sudo apt-get update && sudo apt-get install -y libsndfile1
+
+      - name: Install Python dependencies
+        run: |
+          pip install apache-airflow==2.9.0 \
+            --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.0/constraints-3.11.txt"
+          pip install librosa soundfile psycopg2-binary pandas requests \
+                      pytest ruff black
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Black format check
+        run: black --check .
+
+      - name: Airflow DB init (SQLite)
+        env:
+          AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////tmp/airflow_ci.db
+          AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+        run: airflow db migrate
+
+      - name: DAG integrity tests
+        env:
+          AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////tmp/airflow_ci.db
+          AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+        run: pytest tests/ -v
