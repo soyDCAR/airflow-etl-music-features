@@ -70,8 +70,8 @@ def extract_fma_features() -> None:
     def extract_features(tracks: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         """Extrae MFCC (13 coef), centroid espectral y tempo por track.
         Retorna {"features": [...], "errors": [...]} para persistir ambos."""
-        import numpy as np
         import librosa
+        import numpy as np
 
         features: list[dict[str, Any]] = []
         errors: list[dict[str, Any]] = []
@@ -111,9 +111,10 @@ def extract_fma_features() -> None:
     def load_to_postgres(payload: dict[str, list[dict[str, Any]]]) -> dict[str, int]:
         """Upsert de features + insert de errores. Usa PostgresHook (sin credenciales en código)."""
         import json
-        from psycopg2.extras import execute_values
-        from airflow.providers.postgres.hooks.postgres import PostgresHook
+
         from airflow.operators.python import get_current_context
+        from airflow.providers.postgres.hooks.postgres import PostgresHook
+        from psycopg2.extras import execute_values
 
         ctx = get_current_context()
         dag_id = ctx["dag"].dag_id
@@ -215,6 +216,7 @@ def _stream_download(url: str, dest: Path, chunk_size: int = 8192) -> None:
 
 def _download_fma_tracks(sample_size: int, data_dir: Path) -> list[dict[str, Any]]:
     import zipfile
+
     import pandas as pd
     metadata_dir = data_dir / "metadata"
     metadata_dir.mkdir(exist_ok=True)
