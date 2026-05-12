@@ -1,0 +1,12 @@
+# Force LF line endings in the repo for all text files.
+# This ensures black/ruff produce identical output locally (Windows) and in CI (Linux).
+* text=auto eol=lf
+
+# Explicitly mark binary files so git never touches their line endings
+*.png binary
+*.jpg binary
+*.mp3 binary
+*.wav binary
+*.flac binary
+*.npy binary
+*.zip binary
