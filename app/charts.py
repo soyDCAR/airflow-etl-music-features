@@ -148,7 +148,7 @@ def mfcc_bar(df: pd.DataFrame, track_id: str) -> go.Figure:
         return go.Figure()
 
     def _to_list(val) -> list[float]:
-        if isinstance(val, (list, tuple)):
+        if isinstance(val, list | tuple):
             return [float(v) for v in val]
         try:
             return [float(val)]
@@ -191,14 +191,14 @@ def mfcc_heatmap(df: pd.DataFrame) -> go.Figure:
     If it's a scalar, falls back to a simple mean/std comparison per track.
     """
     sample = df["mfcc_mean"].iloc[0] if not df.empty else None
-    is_list = isinstance(sample, (list, tuple))
+    is_list = isinstance(sample, list | tuple)
 
     if is_list:
         # Build matrix: tracks × coefficients
         n_coeff = len(sample)
         matrix = pd.DataFrame(
             [
-                row if isinstance(row, (list, tuple)) else [row] * n_coeff
+                row if isinstance(row, list | tuple) else [row] * n_coeff
                 for row in df["mfcc_mean"]
             ],
             index=df["track_id"].values,
