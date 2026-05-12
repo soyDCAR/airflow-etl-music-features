@@ -6,7 +6,7 @@ ignore = ["E501"]
 exclude = [".git", "__pycache__", ".venv", "build", "dist"]
 
 [tool.ruff.isort]
-known-first-party = ["dags", "plugins"]
+known-first-party = ["dags", "plugins", "callbacks"]
 
 [tool.black]
 target-version = ["py311"]
