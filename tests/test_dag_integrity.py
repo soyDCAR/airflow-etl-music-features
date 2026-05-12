@@ -1,9 +1,15 @@
 """DAG integrity tests — validan estructura sin ejecutar tareas ni servicios."""
+
 import pytest
 from airflow.models import DagBag
 
 DAG_ID = "extract_fma_features"
-EXPECTED_TASKS = {"download_fma_sample", "extract_features", "load_to_postgres", "run_dbt_transforms"}
+EXPECTED_TASKS = {
+    "download_fma_sample",
+    "extract_features",
+    "load_to_postgres",
+    "run_dbt_transforms",
+}
 
 
 @pytest.fixture(scope="module")
@@ -32,11 +38,11 @@ def test_task_ids_match_expected(fma_dag) -> None:
 
 def test_task_dependency_order(fma_dag) -> None:
     download = fma_dag.get_task("download_fma_sample")
-    extract  = fma_dag.get_task("extract_features")
-    load     = fma_dag.get_task("load_to_postgres")
-    dbt      = fma_dag.get_task("run_dbt_transforms")
-    assert "extract_features"   in {t.task_id for t in download.downstream_list}
-    assert "load_to_postgres"   in {t.task_id for t in extract.downstream_list}
+    extract = fma_dag.get_task("extract_features")
+    load = fma_dag.get_task("load_to_postgres")
+    dbt = fma_dag.get_task("run_dbt_transforms")
+    assert "extract_features" in {t.task_id for t in download.downstream_list}
+    assert "load_to_postgres" in {t.task_id for t in extract.downstream_list}
     assert "run_dbt_transforms" in {t.task_id for t in load.downstream_list}
     assert dbt.downstream_list == []
 

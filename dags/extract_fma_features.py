@@ -13,6 +13,7 @@ Airflow Variables (Admin → Variables):
 Airflow Connection:
   postgres_warehouse  → creada automáticamente via AIRFLOW_CONN_POSTGRES_WAREHOUSE
 """
+
 from __future__ import annotations
 
 import logging
@@ -58,7 +59,9 @@ def extract_fma_features() -> None:
     @task(task_id="download_fma_sample", sla=_SLA)
     def download_fma_sample() -> list[dict[str, Any]]:
         """Genera tracks sintéticos o descarga MP3s reales según FMA_USE_SYNTHETIC."""
-        use_synthetic = Variable.get("FMA_USE_SYNTHETIC", default_var="true").lower() == "true"
+        use_synthetic = (
+            Variable.get("FMA_USE_SYNTHETIC", default_var="true").lower() == "true"
+        )
         sample_size = int(Variable.get("FMA_SAMPLE_SIZE", default_var="100"))
         data_dir = Path(Variable.get("FMA_DATA_DIR", default_var="/tmp/fma"))
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -67,7 +70,9 @@ def extract_fma_features() -> None:
         return _download_fma_tracks(sample_size, data_dir)
 
     @task(task_id="extract_features", sla=_SLA)
-    def extract_features(tracks: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    def extract_features(
+        tracks: list[dict[str, Any]]
+    ) -> dict[str, list[dict[str, Any]]]:
         """Extrae MFCC (13 coef), centroid espectral y tempo por track.
         Retorna {"features": [...], "errors": [...]} para persistir ambos."""
         import librosa
@@ -89,22 +94,31 @@ def extract_fma_features() -> None:
                 centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
                 tempo_raw, _ = librosa.beat.beat_track(y=y, sr=sr)
 
-                features.append({
-                    "track_id": track["track_id"],
-                    "title": track.get("title", f"track_{track['track_id']}"),
-                    "duration_sec": round(len(y) / sr, 3),
-                    "sample_rate": sr,
-                    "mfcc_mean": mfccs.mean(axis=1).tolist(),
-                    "mfcc_std": mfccs.std(axis=1).tolist(),
-                    "spectral_centroid_mean": float(centroid.mean()),
-                    "spectral_centroid_std": float(centroid.std()),
-                    "tempo": float(tempo_raw),
-                })
+                features.append(
+                    {
+                        "track_id": track["track_id"],
+                        "title": track.get("title", f"track_{track['track_id']}"),
+                        "duration_sec": round(len(y) / sr, 3),
+                        "sample_rate": sr,
+                        "mfcc_mean": mfccs.mean(axis=1).tolist(),
+                        "mfcc_std": mfccs.std(axis=1).tolist(),
+                        "spectral_centroid_mean": float(centroid.mean()),
+                        "spectral_centroid_std": float(centroid.std()),
+                        "tempo": float(tempo_raw),
+                    }
+                )
             except Exception as exc:  # noqa: BLE001
                 log.error("Fallo extracción track %s: %s", track.get("track_id"), exc)
-                errors.append({"track_id": track.get("track_id", "unknown"), "error": str(exc)})
+                errors.append(
+                    {"track_id": track.get("track_id", "unknown"), "error": str(exc)}
+                )
 
-        log.info("extract_features: OK=%d  FAIL=%d  TOTAL=%d", len(features), len(errors), len(tracks))
+        log.info(
+            "extract_features: OK=%d  FAIL=%d  TOTAL=%d",
+            len(features),
+            len(errors),
+            len(tracks),
+        )
         return {"features": features, "errors": errors}
 
     @task(task_id="load_to_postgres", sla=_SLA)
@@ -141,11 +155,24 @@ def extract_fma_features() -> None:
             INSERT INTO pipeline_errors (dag_id, run_id, task_id, track_id, error_message)
             VALUES %s
         """
-        feature_rows = [(f["track_id"], f["title"], f["duration_sec"], f["sample_rate"],
-                         json.dumps(f["mfcc_mean"]), json.dumps(f["mfcc_std"]),
-                         f["spectral_centroid_mean"], f["spectral_centroid_std"],
-                         f["tempo"], datetime.utcnow()) for f in features]
-        error_rows = [(dag_id, run_id, task_id, e["track_id"], e["error"]) for e in errors]
+        feature_rows = [
+            (
+                f["track_id"],
+                f["title"],
+                f["duration_sec"],
+                f["sample_rate"],
+                json.dumps(f["mfcc_mean"]),
+                json.dumps(f["mfcc_std"]),
+                f["spectral_centroid_mean"],
+                f["spectral_centroid_std"],
+                f["tempo"],
+                datetime.utcnow(),
+            )
+            for f in features
+        ]
+        error_rows = [
+            (dag_id, run_id, task_id, e["track_id"], e["error"]) for e in errors
+        ]
 
         with hook.get_conn() as conn, conn.cursor() as cur:
             if feature_rows:
@@ -153,7 +180,11 @@ def extract_fma_features() -> None:
             if error_rows:
                 execute_values(cur, error_sql, error_rows)
 
-        log.info("load_to_postgres: upserted=%d  errors_logged=%d", len(feature_rows), len(error_rows))
+        log.info(
+            "load_to_postgres: upserted=%d  errors_logged=%d",
+            len(feature_rows),
+            len(error_rows),
+        )
         return {"loaded": len(feature_rows), "errors_logged": len(error_rows)}
 
     @task(task_id="run_dbt_transforms", sla=timedelta(hours=2))
@@ -164,13 +195,22 @@ def extract_fma_features() -> None:
         dbt_dir = Path(Variable.get("DBT_PROJECT_DIR", default_var="/opt/airflow/dbt"))
 
         def _dbt(subcmd: str) -> str:
-            cmd = ["dbt", subcmd, "--profiles-dir", str(dbt_dir),
-                   "--project-dir", str(dbt_dir), "--no-use-colors"]
+            cmd = [
+                "dbt",
+                subcmd,
+                "--profiles-dir",
+                str(dbt_dir),
+                "--project-dir",
+                str(dbt_dir),
+                "--no-use-colors",
+            ]
             log.info("Corriendo: %s", " ".join(cmd))
             result = subprocess.run(cmd, capture_output=True, text=True)
             log.info("stdout:\n%s", result.stdout)
             if result.returncode != 0:
-                raise RuntimeError(f"`dbt {subcmd}` falló (exit {result.returncode}):\n{result.stderr}")
+                raise RuntimeError(
+                    f"`dbt {subcmd}` falló (exit {result.returncode}):\n{result.stderr}"
+                )
             return result.stdout
 
         _dbt("run")
@@ -186,27 +226,41 @@ def extract_fma_features() -> None:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _generate_synthetic_tracks(sample_size: int, data_dir: Path) -> list[dict[str, Any]]:
+
+def _generate_synthetic_tracks(
+    sample_size: int, data_dir: Path
+) -> list[dict[str, Any]]:
     import numpy as np
+
     rng = np.random.default_rng(seed=42)
     tracks: list[dict[str, Any]] = []
     for i in range(sample_size):
         sr, duration = 22050, 30
         t = np.linspace(0, duration, sr * duration, endpoint=False)
         freq = rng.uniform(80, 4000)
-        y = (np.sin(2 * np.pi * freq * t) * 0.5
-             + np.sin(2 * np.pi * freq * 2 * t) * 0.25
-             + rng.normal(0, 0.05, len(t))).astype(np.float32)
+        y = (
+            np.sin(2 * np.pi * freq * t) * 0.5
+            + np.sin(2 * np.pi * freq * 2 * t) * 0.25
+            + rng.normal(0, 0.05, len(t))
+        ).astype(np.float32)
         dest = data_dir / f"synthetic_{i:04d}.npy"
         np.save(dest, y)
-        tracks.append({"track_id": f"SYN_{i:04d}", "title": f"Synthetic Track {i:04d}",
-                        "file_path": str(dest), "sample_rate": sr, "synthetic": True})
+        tracks.append(
+            {
+                "track_id": f"SYN_{i:04d}",
+                "title": f"Synthetic Track {i:04d}",
+                "file_path": str(dest),
+                "sample_rate": sr,
+                "synthetic": True,
+            }
+        )
     log.info("Generados %d tracks sintéticos en %s", sample_size, data_dir)
     return tracks
 
 
 def _stream_download(url: str, dest: Path, chunk_size: int = 8192) -> None:
     import requests
+
     with requests.get(url, stream=True, timeout=60) as resp:
         resp.raise_for_status()
         with open(dest, "wb") as fh:
@@ -218,12 +272,15 @@ def _download_fma_tracks(sample_size: int, data_dir: Path) -> list[dict[str, Any
     import zipfile
 
     import pandas as pd
+
     metadata_dir = data_dir / "metadata"
     metadata_dir.mkdir(exist_ok=True)
     metadata_zip = data_dir / "fma_metadata.zip"
     if not metadata_zip.exists():
         log.info("Descargando FMA metadata (~342 MB)…")
-        _stream_download("https://os.unil.cloud.switch.ch/fma/fma_metadata.zip", metadata_zip)
+        _stream_download(
+            "https://os.unil.cloud.switch.ch/fma/fma_metadata.zip", metadata_zip
+        )
         with zipfile.ZipFile(metadata_zip) as zf:
             zf.extractall(metadata_dir)
     tracks_csv = metadata_dir / "fma_metadata" / "tracks.csv"
@@ -242,8 +299,15 @@ def _download_fma_tracks(sample_size: int, data_dir: Path) -> list[dict[str, Any
             except Exception as exc:
                 log.warning("Skip track %s: %s", tid, exc)
                 continue
-        tracks.append({"track_id": tid, "title": str(row.get(("track", "title"), tid)),
-                        "file_path": str(dest), "sample_rate": 22050, "synthetic": False})
+        tracks.append(
+            {
+                "track_id": tid,
+                "title": str(row.get(("track", "title"), tid)),
+                "file_path": str(dest),
+                "sample_rate": 22050,
+                "synthetic": False,
+            }
+        )
     return tracks
 
 

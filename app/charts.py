@@ -4,6 +4,7 @@ charts.py — Plotly chart builders for the Streamlit dashboard.
 Every function receives a DataFrame and returns a plotly Figure.
 Keeping chart logic separate from UI logic (main.py) makes unit-testing trivial.
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -15,6 +16,7 @@ _PALETTE = px.colors.sequential.Viridis
 
 
 # ── Tempo tab ─────────────────────────────────────────────────────────────────
+
 
 def tempo_bucket_bar(df: pd.DataFrame) -> go.Figure:
     """Horizontal bar — track count per tempo bucket."""
@@ -40,21 +42,36 @@ def tempo_bucket_bar(df: pd.DataFrame) -> go.Figure:
 
 def tempo_stats_table(df: pd.DataFrame) -> go.Figure:
     """Table figure — min / avg / max / stddev BPM per bucket."""
-    cols = ["tempo_bucket", "track_count", "min_tempo_bpm", "avg_tempo_bpm",
-            "max_tempo_bpm", "stddev_tempo_bpm", "pct_of_total"]
-    sub = df[cols].rename(columns={
-        "tempo_bucket":    "Bucket",
-        "track_count":     "Tracks",
-        "min_tempo_bpm":   "Min BPM",
-        "avg_tempo_bpm":   "Avg BPM",
-        "max_tempo_bpm":   "Max BPM",
-        "stddev_tempo_bpm": "Stddev",
-        "pct_of_total":    "% total",
-    })
+    cols = [
+        "tempo_bucket",
+        "track_count",
+        "min_tempo_bpm",
+        "avg_tempo_bpm",
+        "max_tempo_bpm",
+        "stddev_tempo_bpm",
+        "pct_of_total",
+    ]
+    sub = df[cols].rename(
+        columns={
+            "tempo_bucket": "Bucket",
+            "track_count": "Tracks",
+            "min_tempo_bpm": "Min BPM",
+            "avg_tempo_bpm": "Avg BPM",
+            "max_tempo_bpm": "Max BPM",
+            "stddev_tempo_bpm": "Stddev",
+            "pct_of_total": "% total",
+        }
+    )
     fig = go.Figure(
         go.Table(
-            header=dict(values=list(sub.columns), fill_color="#1f2937", font_color="white"),
-            cells=dict(values=[sub[c] for c in sub.columns], fill_color="#111827", font_color="#d1d5db"),
+            header=dict(
+                values=list(sub.columns), fill_color="#1f2937", font_color="white"
+            ),
+            cells=dict(
+                values=[sub[c] for c in sub.columns],
+                fill_color="#111827",
+                font_color="#d1d5db",
+            ),
         )
     )
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0))
@@ -63,7 +80,10 @@ def tempo_stats_table(df: pd.DataFrame) -> go.Figure:
 
 # ── Features tab ──────────────────────────────────────────────────────────────
 
-def feature_scatter(df: pd.DataFrame, x_col: str, y_col: str, color_col: str = "tempo_bucket") -> go.Figure:
+
+def feature_scatter(
+    df: pd.DataFrame, x_col: str, y_col: str, color_col: str = "tempo_bucket"
+) -> go.Figure:
     """Scatter plot — any two numeric feature columns."""
     fig = px.scatter(
         df,
@@ -114,6 +134,7 @@ def spectral_centroid_by_bucket(df: pd.DataFrame) -> go.Figure:
 
 # ── MFCC tab ──────────────────────────────────────────────────────────────────
 
+
 def mfcc_bar(df: pd.DataFrame, track_id: str) -> go.Figure:
     """Bar chart — MFCC per coefficient for a single track.
 
@@ -135,7 +156,7 @@ def mfcc_bar(df: pd.DataFrame, track_id: str) -> go.Figure:
             return [0.0]
 
     means = _to_list(row["mfcc_mean"].iloc[0])
-    stds  = _to_list(row["mfcc_std"].iloc[0])
+    stds = _to_list(row["mfcc_std"].iloc[0])
 
     # Pad stds to same length as means if needed (scalar std for list means)
     if len(stds) == 1 and len(means) > 1:
@@ -144,13 +165,15 @@ def mfcc_bar(df: pd.DataFrame, track_id: str) -> go.Figure:
     x_labels = [f"MFCC {i+1}" for i in range(len(means))]
 
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        name="Mean",
-        x=x_labels,
-        y=means,
-        marker_color="#6366f1",
-        error_y=dict(type="data", array=stds, visible=True),
-    ))
+    fig.add_trace(
+        go.Bar(
+            name="Mean",
+            x=x_labels,
+            y=means,
+            marker_color="#6366f1",
+            error_y=dict(type="data", array=stds, visible=True),
+        )
+    )
     fig.update_layout(
         title=f"MFCC coefficients — track {track_id}",
         xaxis_title="Coeficiente",
@@ -174,8 +197,10 @@ def mfcc_heatmap(df: pd.DataFrame) -> go.Figure:
         # Build matrix: tracks × coefficients
         n_coeff = len(sample)
         matrix = pd.DataFrame(
-            [row if isinstance(row, (list, tuple)) else [row] * n_coeff
-             for row in df["mfcc_mean"]],
+            [
+                row if isinstance(row, (list, tuple)) else [row] * n_coeff
+                for row in df["mfcc_mean"]
+            ],
             index=df["track_id"].values,
             columns=[f"MFCC {i+1}" for i in range(n_coeff)],
         )
@@ -189,8 +214,12 @@ def mfcc_heatmap(df: pd.DataFrame) -> go.Figure:
     else:
         # Scalar case — simple bar comparison
         sub = df[["track_id", "mfcc_mean", "mfcc_std"]].copy()
-        sub["mfcc_mean"] = sub["mfcc_mean"].apply(lambda v: float(v) if v is not None else 0.0)
-        sub["mfcc_std"]  = sub["mfcc_std"].apply(lambda v: float(v) if v is not None else 0.0)
+        sub["mfcc_mean"] = sub["mfcc_mean"].apply(
+            lambda v: float(v) if v is not None else 0.0
+        )
+        sub["mfcc_std"] = sub["mfcc_std"].apply(
+            lambda v: float(v) if v is not None else 0.0
+        )
         sub = sub.set_index("track_id")
         fig = px.imshow(
             sub.T,

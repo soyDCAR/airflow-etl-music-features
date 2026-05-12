@@ -4,6 +4,7 @@ db.py — Database connection and query helpers for the Streamlit dashboard.
 Uses @st.cache_resource for the SQLAlchemy engine (created once per process)
 and @st.cache_data(ttl=300) for query results (refreshed every 5 minutes).
 """
+
 from __future__ import annotations
 
 import os
@@ -15,17 +16,19 @@ from sqlalchemy.engine import Engine
 
 # ── Connection ─────────────────────────────────────────────────────────────────
 
+
 @st.cache_resource(show_spinner="Conectando al warehouse…")
 def get_engine() -> Engine:
     host = os.environ.get("WAREHOUSE_DB_HOST", "postgres-warehouse")
-    db   = os.environ.get("WAREHOUSE_DB_NAME", "music_features")
+    db = os.environ.get("WAREHOUSE_DB_NAME", "music_features")
     user = os.environ.get("WAREHOUSE_DB_USER", "warehouse")
-    pwd  = os.environ.get("WAREHOUSE_DB_PASSWORD", "warehouse")
-    url  = f"postgresql+psycopg2://{user}:{pwd}@{host}/{db}"
+    pwd = os.environ.get("WAREHOUSE_DB_PASSWORD", "warehouse")
+    url = f"postgresql+psycopg2://{user}:{pwd}@{host}/{db}"
     return create_engine(url, pool_pre_ping=True)
 
 
 # ── Query helpers ──────────────────────────────────────────────────────────────
+
 
 @st.cache_data(ttl=300, show_spinner="Cargando estadísticas de tempo…")
 def load_tempo_stats() -> pd.DataFrame:
@@ -92,7 +95,9 @@ def load_pipeline_errors(limit: int = 100) -> pd.DataFrame:
             return pd.read_sql(sql, conn, params={"lim": limit})
     except Exception:
         # Table doesn't exist yet (first run) or connection issue — return empty
-        return pd.DataFrame(columns=["track_id", "error_type", "error_message", "occurred_at"])
+        return pd.DataFrame(
+            columns=["track_id", "error_type", "error_message", "occurred_at"]
+        )
 
 
 @st.cache_data(ttl=300, show_spinner="Cargando KPIs…")
@@ -109,10 +114,15 @@ def load_kpis() -> dict:
     with get_engine().connect() as conn:
         row = conn.execute(text(sql)).fetchone()
     if row is None:
-        return {"total_tracks": 0, "avg_bpm": 0, "avg_duration_sec": 0, "last_run": None}
+        return {
+            "total_tracks": 0,
+            "avg_bpm": 0,
+            "avg_duration_sec": 0,
+            "last_run": None,
+        }
     return {
-        "total_tracks":    int(row[0]),
-        "avg_bpm":         float(row[1] or 0),
+        "total_tracks": int(row[0]),
+        "avg_bpm": float(row[1] or 0),
         "avg_duration_sec": float(row[2] or 0),
-        "last_run":        row[3],
+        "last_run": row[3],
     }

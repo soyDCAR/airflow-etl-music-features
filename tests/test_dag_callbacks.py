@@ -1,4 +1,5 @@
 """Tests de retries, SLA y callbacks — sin ejecutar tareas."""
+
 import pytest
 from airflow.models import DagBag
 
@@ -22,7 +23,9 @@ def test_all_tasks_have_sla(fma_dag) -> None:
 
 def test_all_tasks_have_failure_callback(fma_dag) -> None:
     for task in fma_dag.tasks:
-        assert task.on_failure_callback is not None, f"Tarea '{task.task_id}' sin on_failure_callback"
+        assert (
+            task.on_failure_callback is not None
+        ), f"Tarea '{task.task_id}' sin on_failure_callback"
 
 
 def test_all_tasks_use_exponential_backoff(fma_dag) -> None:

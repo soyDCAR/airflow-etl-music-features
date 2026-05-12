@@ -9,6 +9,7 @@ Uso en default_args / DAG:
     default_args = {"on_failure_callback": notify_failure, ...}
     @dag(sla_miss_callback=notify_sla_miss, ...)
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,7 +37,9 @@ def notify_failure(context: dict[str, Any]) -> None:
     _post_slack(message)
 
 
-def notify_sla_miss(dag: DAG, task_list: str, blocking_task_list: str, slas: list, blocking_tis: list) -> None:
+def notify_sla_miss(
+    dag: DAG, task_list: str, blocking_task_list: str, slas: list, blocking_tis: list
+) -> None:
     """Llamado cuando el scheduler detecta un SLA miss."""
     message = (
         f":alarm_clock: *SLA missed*\n"
@@ -53,6 +56,7 @@ def _post_slack(message: str) -> None:
     try:
         import requests
         from airflow.models import Variable
+
         webhook_url = Variable.get("SLACK_WEBHOOK_URL", default_var="")
         if not webhook_url:
             log.debug("SLACK_WEBHOOK_URL no configurado — notificación omitida")

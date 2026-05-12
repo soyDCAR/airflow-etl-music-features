@@ -8,6 +8,7 @@ Layout: 5 tabs
   4. MFCC       — per-track MFCC viewer + heatmap
   5. Data       — raw table + CSV download
 """
+
 from __future__ import annotations
 
 import streamlit as st
@@ -41,9 +42,9 @@ st.divider()
 
 # ── Load data (cached) ─────────────────────────────────────────────────────────
 with st.spinner("Cargando datos…"):
-    kpis        = load_kpis()
+    kpis = load_kpis()
     tempo_stats = load_tempo_stats()
-    audio_df    = load_audio_features()
+    audio_df = load_audio_features()
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
 tab_overview, tab_tempo, tab_features, tab_mfcc, tab_data = st.tabs(
@@ -87,7 +88,9 @@ with tab_tempo:
         with col_left:
             st.plotly_chart(tempo_bucket_bar(tempo_stats), use_container_width=True)
         with col_right:
-            st.plotly_chart(spectral_centroid_by_bucket(audio_df), use_container_width=True)
+            st.plotly_chart(
+                spectral_centroid_by_bucket(audio_df), use_container_width=True
+            )
 
         st.subheader("Estadísticas por bucket")
         st.plotly_chart(tempo_stats_table(tempo_stats), use_container_width=True)
@@ -101,12 +104,20 @@ with tab_features:
         st.info("Sin datos de audio features.")
     else:
         st.subheader("Scatter plot interactivo")
-        numeric_cols = ["tempo", "duration_sec", "spectral_centroid_mean", "spectral_centroid_std",
-                        "mfcc_mean", "mfcc_std"]
+        numeric_cols = [
+            "tempo",
+            "duration_sec",
+            "spectral_centroid_mean",
+            "spectral_centroid_std",
+            "mfcc_mean",
+            "mfcc_std",
+        ]
         col_x, col_y = st.columns(2)
         x_col = col_x.selectbox("Eje X", numeric_cols, index=0)
         y_col = col_y.selectbox("Eje Y", numeric_cols, index=2)
-        st.plotly_chart(feature_scatter(audio_df, x_col, y_col), use_container_width=True)
+        st.plotly_chart(
+            feature_scatter(audio_df, x_col, y_col), use_container_width=True
+        )
 
         st.subheader("Distribución de duración")
         st.plotly_chart(duration_histogram(audio_df), use_container_width=True)
@@ -121,11 +132,13 @@ with tab_mfcc:
     else:
         st.subheader("MFCC por track")
         track_ids = audio_df["track_id"].tolist()
-        selected  = st.selectbox("Selecciona un track", track_ids)
+        selected = st.selectbox("Selecciona un track", track_ids)
         if selected:
             row = audio_df[audio_df["track_id"] == selected].iloc[0]
             title = row.get("title", "—") or "—"
-            st.caption(f"**{title}** · BPM: {row['tempo']:.1f} · Bucket: {row['tempo_bucket']}")
+            st.caption(
+                f"**{title}** · BPM: {row['tempo']:.1f} · Bucket: {row['tempo_bucket']}"
+            )
             st.plotly_chart(mfcc_bar(audio_df, selected), use_container_width=True)
 
         st.subheader("Heatmap global de MFCC")
