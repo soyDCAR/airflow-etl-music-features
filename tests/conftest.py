@@ -1,4 +1,9 @@
 import os
+import sys
+from pathlib import Path
+
+# Airflow adds dags/ to sys.path at runtime; replicate that for pytest
+sys.path.insert(0, str(Path(__file__).parent.parent / "dags"))
 
 # Configure Airflow to use SQLite so tests run without Docker
 os.environ.setdefault(
