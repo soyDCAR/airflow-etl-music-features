@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import streamlit as st
 
-from db import load_audio_features, load_kpis, load_pipeline_errors, load_tempo_stats
 from charts import (
     duration_histogram,
     feature_scatter,
@@ -22,6 +21,7 @@ from charts import (
     tempo_bucket_bar,
     tempo_stats_table,
 )
+from db import load_audio_features, load_kpis, load_pipeline_errors, load_tempo_stats
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
