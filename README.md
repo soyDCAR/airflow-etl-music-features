@@ -89,7 +89,7 @@ docker compose up --build -d
 
 Enable and trigger `extract_fma_features`. By default it runs in **synthetic mode** (numpy sine waves, no downloads, instant results). Set the Airflow Variable `FMA_USE_SYNTHETIC` to `false` for real FMA audio.
 
-> <img width="1366" height="720" alt="image" src="https://github.com/user-attachments/assets/cc318086-3dd8-4add-aab0-71b34893a3e5" />
+> <img width="1366" height="720" alt="image" src="https://github.com/user-attachments/assets/25810712-c27a-4659-8b2a-5f1118edfd22" />
 
 
 ---
