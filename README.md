@@ -7,7 +7,7 @@
 [![Postgres 15](https://img.shields.io/badge/postgres-15-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-Production-grade ETL pipeline that ingests [Free Music Archive (FMA)](https://github.com/mdeff/fma) audio samples, extracts acoustic features with **librosa**, and loads them into a **Postgres** data warehouse — all orchestrated by **Apache Airflow** inside **Docker Compose**.
+Production-grade pipeline that ingests [Free Music Archive (FMA)](https://github.com/mdeff/fma) audio, extracts acoustic features with **librosa**, transforms them with **dbt**, and serves a live **Streamlit** dashboard — all orchestrated by **Apache Airflow** inside **Docker Compose**. Built as a reusable template for **ML training pipelines and batch inference workflows**.
 
 ---
 
@@ -19,11 +19,25 @@ flowchart LR
         FMA["FMA Archive\n(real MP3s)\nor Synthetic\nsignals"]
     end
 
-    subgraph airflow["Apache Airflow 2.9 — LocalExecutor"]
-        T1["download_fma_sample\n📥 Stage tracks"]
-        T2["extract_features\n🎵 MFCC · centroid · tempo"]
-        T3["load_to_postgres\n🗄️ Upsert warehouse"]
-        T1 --> T2 --> T3
+    subgraph airflow["Apache Airflow 2.9 — LocalExecutor · TaskFlow API"]
+        T1["① download_fma_sample\n📥 Stage tracks"]
+        T2["② extract_features\n🎵 MFCC · centroid · tempo"]
+        T3["③ load_to_postgres\n🗄️ Upsert warehouse\n(PostgresHook)"]
+        T4["④ run_dbt_transforms\n📐 dbt run + dbt test"]
+        T1 --> T2 --> T3 --> T4
+    end
+
+    subgraph transforms["dbt Layers"]
+        STG["stg_audio_features\n(VIEW)"]
+        FCT["fct_audio_features\n(INCREMENTAL)"]
+        DIM["dim_tracks\n(TABLE)"]
+        MART["mart_tempo_stats\n(TABLE)"]
+        STG --> FCT & DIM
+        FCT --> MART
+    end
+
+    subgraph serving["Serving"]
+        ST["Streamlit Dashboard\nlocalhost:8501\n5 tabs · Plotly"]
     end
 
     subgraph docker["Docker Compose"]
@@ -34,7 +48,10 @@ flowchart LR
 
     FMA --> T1
     T3 --> WH
-    airflow -.->|"DAG state\nXCom / logs"| META
+    T4 --> transforms
+    transforms --> WH
+    WH --> serving
+    airflow -.->|"DAG state · XCom · logs"| META
 ```
 
 ---
@@ -48,68 +65,91 @@ git clone https://github.com/soyDCAR/airflow-etl-music-features.git
 cd airflow-etl-music-features
 
 cp .env.example .env
-# Edit .env — generate a Fernet key:
+# Generate a Fernet key and paste it as FERNET_KEY in .env:
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# Paste the output as FERNET_KEY in .env
 ```
 
 ### 2. Build & start
 
 ```bash
-# First run: initialises metadata DB and creates the admin user
+# First run — initialises the metadata DB and creates the admin user
 docker compose up airflow-init
 
-# Then bring up the full stack
+# Bring up the full stack (Airflow + two Postgres + Streamlit dashboard)
 docker compose up --build -d
 ```
 
-### 3. Open the UI
+### 3. Open the UIs
 
-Navigate to [http://localhost:8080](http://localhost:8080) — credentials are `airflow / airflow` (or whatever you set in `.env`).
+| Service | URL | Credentials |
+|---|---|---|
+| Airflow | http://localhost:8080 | `airflow / airflow` |
+| Streamlit dashboard | http://localhost:8501 | — |
+| Warehouse (psql) | `localhost:5433` | from `.env` |
 
-Enable and trigger `extract_fma_features`. By default it runs in **synthetic mode** (no downloads, instant results). To use real FMA data set the Airflow Variable `FMA_USE_SYNTHETIC` to `false`.
+Enable and trigger `extract_fma_features`. By default it runs in **synthetic mode** (numpy sine waves, no downloads, instant results). Set the Airflow Variable `FMA_USE_SYNTHETIC` to `false` for real FMA audio.
+
+> **Screenshot:** *(Add Airflow UI screenshot after first successful run — all 4 tasks green)*
+
+---
+
+## Key Engineering Decisions
+
+| Decision | Detail |
+|---|---|
+| **TaskFlow API** | `@dag` / `@task` decorators; XCom passes typed dicts between tasks automatically |
+| **PostgresHook** | Zero credentials in code — connection read from `AIRFLOW_CONN_POSTGRES_WAREHOUSE` env var |
+| **Exponential backoff** | `retry_exponential_backoff=True`, `max_retry_delay=30 min`, `on_failure_callback` for Slack |
+| **dbt incremental** | `fct_audio_features` only processes rows newer than `max(processed_at)` — safe for daily runs |
+| **Synthetic mode** | Numpy sine waves replace real downloads in CI/dev — same code path, zero network calls |
+| **scipy pin** | `scipy==1.11.4` — librosa 0.10.x uses `scipy.signal.hann` removed in 1.12 |
 
 ---
 
 ## Warehouse Schema
 
-**Table:** `audio_features`
+**Staging → Marts (dbt)**
+
+```
+public.audio_features          ← raw upsert target (PostgresHook)
+       │
+       └─ marts.stg_audio_features  (VIEW  — adds tempo_bucket, duration_bucket)
+              ├─ marts.fct_audio_features   (INCREMENTAL TABLE — one row per track)
+              ├─ marts.dim_tracks           (TABLE — track metadata dimension)
+              └─ marts.mart_tempo_stats     (TABLE — aggregated BPM stats per bucket)
+```
+
+**`public.audio_features`** — raw feature store
 
 | Column | Type | Description |
 |---|---|---|
-| `id` | `BIGSERIAL` | Auto PK |
-| `track_id` | `VARCHAR(20)` | FMA track ID or `SYN_XXXX` |
-| `title` | `TEXT` | Track title |
-| `duration_sec` | `FLOAT` | Clip duration in seconds |
-| `sample_rate` | `INTEGER` | Audio sample rate (Hz) |
+| `track_id` | `TEXT` | FMA ID or `SYN_XXXX` |
 | `mfcc_mean` | `JSONB` | Mean of 13 MFCC coefficients |
 | `mfcc_std` | `JSONB` | Std dev of 13 MFCC coefficients |
 | `spectral_centroid_mean` | `FLOAT` | Mean spectral centroid (Hz) |
-| `spectral_centroid_std` | `FLOAT` | Std dev spectral centroid |
-| `tempo` | `FLOAT` | Estimated BPM |
-| `processed_at` | `TIMESTAMPTZ` | Last pipeline run time |
-| `created_at` | `TIMESTAMPTZ` | Row creation time |
-
-Connect directly to the warehouse on `localhost:5433` (user/pass from `.env`).
+| `tempo` | `FLOAT` | Estimated BPM (librosa beat tracker) |
+| `processed_at` | `TIMESTAMPTZ` | Pipeline run timestamp |
 
 ---
 
 ## Development
 
 ```bash
-# Lint
+# Lint + format
 ruff check .
 black --check .
 
-# Tests (no Docker needed)
+# Run tests locally (no Docker needed)
 pip install apache-airflow==2.9.0 \
   --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.0/constraints-3.11.txt"
-pip install librosa soundfile psycopg2-binary pandas pytest ruff black
+pip install librosa soundfile psycopg2-binary pandas pytest ruff==0.4.2 black==24.4.2
 
 AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////tmp/af.db \
 AIRFLOW__CORE__LOAD_EXAMPLES=False \
 airflow db migrate && pytest tests/ -v
 ```
+
+Pre-commit hooks (black + ruff) run automatically on every `git commit`.
 
 ---
 
@@ -118,35 +158,44 @@ airflow db migrate && pytest tests/ -v
 ```
 .
 ├── dags/
-│   └── extract_fma_features.py   # Main pipeline DAG (TaskFlow API)
-├── plugins/                       # Custom Airflow operators/hooks (future)
+│   ├── extract_fma_features.py   # 4-task DAG: download → extract → load → dbt
+│   └── callbacks.py              # on_failure_callback + sla_miss_callback (Slack-ready)
+├── dbt/
+│   ├── models/
+│   │   ├── staging/              # stg_audio_features (VIEW)
+│   │   └── marts/                # fct_audio_features (INCREMENTAL), dim_tracks, mart_tempo_stats
+│   ├── macros/                   # generate_schema_name (prevents public_marts bug)
+│   └── profiles.yml              # reads WAREHOUSE_DB_* env vars
+├── app/
+│   ├── main.py                   # Streamlit 5-tab dashboard
+│   ├── db.py                     # SQLAlchemy engine + cached query helpers
+│   └── charts.py                 # Plotly chart builders
 ├── tests/
-│   ├── conftest.py                # Airflow env vars for CI
-│   └── test_dag_integrity.py      # Structure & dependency checks
+│   ├── conftest.py               # Airflow SQLite env + sys.path for dags/
+│   ├── test_dag_integrity.py     # Structure, task count, dependency order
+│   └── test_dag_callbacks.py     # SLA, retries, exponential backoff assertions
 ├── sql/
-│   └── init/
-│       └── 01_create_tables.sql   # Warehouse DDL (auto-run on first start)
-├── .github/workflows/ci.yml       # Ruff + Black + pytest on push/PR
-├── docker-compose.yml
-├── Dockerfile                     # Extends official Airflow image + librosa
-├── pyproject.toml                 # Ruff + Black + pytest config
-├── requirements.txt
-└── .env.example
+│   ├── init/                     # DDL auto-run on postgres-warehouse first start
+│   └── migrations/               # 01_partition_audio_features.sql (monthly range)
+├── .github/workflows/ci.yml      # Ruff + Black + pytest + dbt parse on push/PR
+├── .pre-commit-config.yaml       # Local black + ruff hooks
+├── docker-compose.yml            # Airflow + 2× Postgres + Streamlit
+├── Dockerfile                    # Extends official Airflow image + librosa + dbt
+├── Dockerfile.dashboard          # python:3.11-slim + Streamlit
+├── pyproject.toml                # Ruff + Black + pytest config
+└── requirements.txt
 ```
 
 ---
 
-## What's Next (P2)
+## Roadmap — Toward ML Pipelines
 
-| Feature | Description |
+This repo is intentionally structured as a **reusable template for ML orchestration**. The same DAG pattern (ingest → transform → validate → serve) applies directly to training pipelines and batch inference:
+
+| Next step | Description |
 |---|---|
-| **Kafka real-time ingestion** | Stream new track events instead of batch daily runs |
-| **dbt transformations** | Build `dim_tracks`, `fct_audio_features`, genre aggregates |
-| **Retries & alerting** | Slack callbacks on task failure, dead-letter queue |
-| **Partitioned loads** | Partition `audio_features` by `processed_at` month |
-| **Streamlit dashboard** | Interactive explorer for tempo, MFCC clusters, genre search |
-| **Great Expectations** | Data quality checks between extract and load |
-
----
-
-> **Screenshot:** *(Add Airflow UI screenshot here after first successful run)*
+| **Training pipeline DAG** | Add `train_model` task after `run_dbt_transforms` — reads `mart_tempo_stats`, trains a sklearn/XGBoost genre classifier, serialises to `models/` |
+| **Batch inference DAG** | Scheduled DAG that loads the latest model artifact, runs predictions over new tracks, writes results back to the warehouse |
+| **Retraining trigger** | Sensor task that watches for data drift (e.g. new tempo distribution) and triggers retraining automatically |
+| **Model registry** | Log metrics + artefacts to MLflow; promote champion model via Airflow Variable |
+| **Data quality gate** | Great Expectations checkpoint between `load_to_postgres` and `run_dbt_transforms` — fail fast on schema drift |
